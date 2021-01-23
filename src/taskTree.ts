@@ -1537,39 +1537,44 @@ export class TaskTreeDataProvider implements TreeDataProvider<TreeItem>
                 //
                 if (configuration.get("groupWithSeparator"))
                 {
-                    let prevName: string[];
-                    let prevTaskItem: TaskItem | TaskFile;
                     const newNodes: TaskFile[] = [];
 
                     each.scripts.forEach(each2 =>
                     {
                         let id = folder.label + each.taskSource;
                         let subfolder: TaskFile;
-                        const prevNameThis = each2.label.split(groupSeparator);
-                        if (prevName && prevName.length > 1 && prevName[0] && prevNameThis.length > 1 && prevName[0] === prevNameThis[0])
+                        let prevSubFolder: TaskFile;
+                        let namesplits = each2.label.split(groupSeparator);
+                        // add subfolders for each split but not the last one
+                        namesplits.slice(0, -1).forEach(subname =>
                         {
-                            // We found a pair of tasks that need to be grouped.  i.e. the first part of the label
-                            // when split by the separator character is the same...
-                            //
-                            id += prevName[0];
-                            subfolder = subfolders.get(id);
+                            let subfolderId = id + subname;
+                            subfolder = subfolders.get(subfolderId);
                             if (!subfolder)
                             {
                                 // Create the new node, add it to the list of nodes to add to the tree.  We must
                                 // add them after we loop since we are looping on the array that they need to be
                                 // added to
-                                //
                                 subfolder = new TaskFile(this.extensionContext, folder, (each2 as TaskItem).task.definition,
-                                                         each.taskSource, (each2 as TaskItem).taskFile.path, true, prevName[0]);
-                                subfolders.set(id, subfolder);
-                                subfolder.addScript(prevTaskItem);
-                                newNodes.push(subfolder);
+                                                         each.taskSource, (each2 as TaskItem).taskFile.path, true, subname);
+                                subfolders.set(subfolderId, subfolder);
+                                if(prevSubFolder)
+                                {
+                                    //if a previous subfolder already exists, then this is a sub-subfolder and we have to add it to the previous folder
+                                    prevSubFolder.addScript(subfolder);
+                                } 
+                                else 
+                                {
+                                    //this is the first subfolder and we have to add it to the newNodes list to add them later
+                                    newNodes.push(subfolder);
+                                }
                             }
+                            prevSubFolder = subfolder;
+                        });
+                        // add the script to the last subfolder
+                        if(subfolder) {
                             subfolder.addScript(each2);
                         }
-
-                        prevName = each2.label.split(groupSeparator);
-                        prevTaskItem = each2;
                     });
                     //
                     // If there are new grouped by separator nodes to add to the tree...
@@ -1691,24 +1696,13 @@ export class TaskTreeDataProvider implements TreeDataProvider<TreeItem>
         {
             if (each instanceof TaskFile)
             {
-                if (each.isGroup)
-                {
-                    let rmvLbl = each.label;
-                    // rmvLbl = rmvLbl.replace(/ \([\w-_]+\)/gi, "").replace(/\[/gi, "\\[");
-                    rmvLbl = rmvLbl.replace(/\(/gi, "\\(").replace(/\[/gi, "\\[");
-                    rmvLbl = rmvLbl.replace(/\)/gi, "\\)").replace(/\]/gi, "\\]");
-                    each.scripts.forEach(each2 =>
-                    {
-                        console.log(each2.label);
-                        console.log('    ' + rmvLbl + groupSeparator);
-                        const rgx = new RegExp(rmvLbl + groupSeparator, "i");
-                        each2.label = each2.label.replace(rgx, "");
-                    });
-                }
-                else
-                {
-                    this.renameGroupedTasks(each, groupSeparator);
-                }
+                // it's a task file, so we have to also iterate its scripts and rename them
+                this.renameGroupedTasks(each, groupSeparator);
+            }
+            else
+            {
+                // rename it to the last element
+                each.label = each.label.split(groupSeparator).pop();
             }
         });
     }
